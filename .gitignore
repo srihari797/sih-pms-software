@@ -1,0 +1,35 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / Editor files
+.idea/
+.vscode/
+
+# Android / Gradle build artifacts
+.gradle/
+**/build/
+emt_gateway/build/
+emt_gateway/app/build/
+*.apk
+*.aar
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# Database / SQLite temporary files
+*.db
+*.db-journal
+*.db-wal

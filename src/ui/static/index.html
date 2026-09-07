@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contec CMS8000 Virtual Patient Monitor</title>
+  <link rel="stylesheet" href="css/monitor_style.css">
+</head>
+<body>
+
+  <!-- TOP SAFETY BANNER & ROTATE VIEW CONTROL -->
+  <div class="safety-banner">
+    <span class="banner-title">SIMULATION — NOT A MEDICAL DEVICE | CONTEC CMS8000 INSPIRED VIRTUAL PATIENT MONITOR (SIH PHASE 1)</span>
+    <button class="btn-rotate-top" id="btnRotateView">🔄 ROTATE DEVICE (REAR / FRONT)</button>
+  </div>
+
+  <div class="workspace-container">
+
+    <!-- FRONT PATIENT MONITOR CHASSIS -->
+    <div class="monitor-chassis" id="monitorChassis">
+      
+      <!-- TOP HANDLE CUTOUT -->
+      <div class="handle-cutout"></div>
+
+      <!-- CHASSIS HEADER BAR -->
+      <div class="chassis-header">
+        <div class="brand-title">
+          <span class="brand-name">CONTEC</span>
+          <span class="model-name">CMS8000</span>
+          <span class="sub-name">VIRTUAL PATIENT MONITOR</span>
+        </div>
+        <!-- ALARM LAMP BAR -->
+        <div class="alarm-lamp-bar" id="alarmLamp">
+          <div class="alarm-light" id="alarmLight"></div>
+          <span id="alarmLampText">SYSTEM NORMAL</span>
+        </div>
+      </div>
+
+      <!-- DISPLAY GLASS / MONITOR SCREEN BEZEL -->
+      <div class="display-glass" id="displayGlass">
+        
+        <!-- BOOT SCREEN OVERLAY -->
+        <div class="boot-screen" id="bootScreen">
+          <div class="boot-logo">CONTEC CMS8000</div>
+          <div class="boot-spinner"></div>
+          <div class="boot-status" id="bootStatusText">INITIALIZING SYSTEM...</div>
+          <div class="boot-checklist" id="bootChecklist">
+            <div>ECG MODULE .......... [ OK ]</div>
+            <div>SpO2 MODULE .......... [ OK ]</div>
+            <div>NIBP MODULE .......... [ OK ]</div>
+            <div>TEMP MODULE .......... [ OK ]</div>
+            <div>ALARM SYSTEM ......... [ OK ]</div>
+            <div>STORAGE SYSTEM ....... [ OK ]</div>
+          </div>
+        </div>
+
+        <!-- POWER OFF OVERLAY -->
+        <div class="power-off-screen" id="powerOffScreen">
+          <div class="power-off-text">SYSTEM POWERED OFF</div>
+          <div class="power-off-sub">CLICK POWER BUTTON TO BOOT DEVICE</div>
+        </div>
+
+        <!-- EMBEDDED MONITOR MENU OVERLAY -->
+        <div class="embedded-menu-overlay hidden" id="embeddedMenuOverlay">
+          <div class="menu-header">
+            <span class="menu-title" id="menuTitle">MONITOR MAIN MENU</span>
+            <button class="menu-close-btn" id="btnMenuClose">✕ CLOSE</button>
+          </div>
+          <div class="menu-tabs">
+            <button class="menu-tab active" data-tab="patient">PATIENT</button>
+            <button class="menu-tab" data-tab="alarms">ALARMS</button>
+            <button class="menu-tab" data-tab="trends">TRENDS</button>
+            <button class="menu-tab" data-tab="events">EVENTS</button>
+            <button class="menu-tab" data-tab="system">SYSTEM</button>
+            <button class="menu-tab" data-tab="sensors">SENSORS</button>
+          </div>
+          <div class="menu-content" id="menuContent">
+            <!-- Dynamically populated menu content -->
+          </div>
+        </div>
+
+        <!-- TOP SCREEN STATUS BAR -->
+        <div class="screen-top-bar">
+          <div class="patient-info">
+            <span class="device-status-tag" style="font-weight:bold; color:#00e676;">CMS8000 PATIENT MONITORING SYSTEM</span>
+          </div>
+          <div class="screen-clock" id="screenClock">2026-09-06 12:00:00</div>
+        </div>
+
+        <!-- ALARM BANNER AREA -->
+        <div class="screen-alarm-banner" id="screenAlarmBanner">
+          <span id="alarmBannerText">NO ALARM — MONITORING ACTIVE</span>
+        </div>
+
+        <!-- WAVEFORM & PARAMETER GRID -->
+        <div class="screen-grid">
+
+          <!-- LEFT WAVEFORM COLUMN -->
+          <div class="waveform-column">
+            <!-- ECG WAVEFORM ROW -->
+            <div class="waveform-row ecg-row">
+              <div class="waveform-label">
+                <span class="lead-tag">II</span>
+                <span class="wave-name ecg-color">ECG</span>
+                <span class="gain-tag">x1.0</span>
+              </div>
+              <canvas id="ecgCanvas" width="540" height="120"></canvas>
+            </div>
+
+            <!-- RESPIRATION WAVEFORM ROW -->
+            <div class="waveform-row resp-row">
+              <div class="waveform-label">
+                <span class="wave-name resp-color">RESP</span>
+                <span class="gain-tag">x1.0</span>
+              </div>
+              <canvas id="respCanvas" width="540" height="120"></canvas>
+            </div>
+
+            <!-- SpO2 PLETH WAVEFORM ROW -->
+            <div class="waveform-row pleth-row">
+              <div class="waveform-label">
+                <span class="wave-name pleth-color">PLETH</span>
+              </div>
+              <canvas id="plethCanvas" width="540" height="120"></canvas>
+            </div>
+          </div>
+
+          <!-- RIGHT PARAMETER READOUT COLUMN -->
+          <div class="parameter-column">
+            
+            <!-- HR / PR BOX -->
+            <div class="param-box ecg-color" id="boxHR">
+              <div class="param-header">
+                <span>HR</span>
+                <span class="param-unit">bpm</span>
+              </div>
+              <div class="param-value" id="valHR">82</div>
+              <div class="param-limits">120 / 50</div>
+            </div>
+
+            <!-- SpO2 BOX -->
+            <div class="param-box pleth-color" id="boxSpO2">
+              <div class="param-header">
+                <span>SpO₂</span>
+                <span class="param-unit">%</span>
+              </div>
+              <div class="param-value" id="valSpO2">98</div>
+              <div class="param-sub">PR: <span id="valPR">82</span> bpm</div>
+            </div>
+
+            <!-- NIBP BOX -->
+            <div class="param-box nibp-color" id="boxNIBP">
+              <div class="param-header">
+                <span>NIBP</span>
+                <span class="param-unit">mmHg</span>
+              </div>
+              <div class="param-value-large" id="valBP">120/80</div>
+              <div class="param-sub">MAP: <span id="valMAP">93</span></div>
+              <div class="nibp-state-badge" id="nibpStateBadge">IDLE</div>
+            </div>
+
+            <!-- RESP BOX -->
+            <div class="param-box resp-color" id="boxRESP">
+              <div class="param-header">
+                <span>RESP</span>
+                <span class="param-unit">/min</span>
+              </div>
+              <div class="param-value" id="valRR">18</div>
+            </div>
+
+            <!-- TEMP BOX -->
+            <div class="param-box temp-color" id="boxTEMP">
+              <div class="param-header">
+                <span>TEMP</span>
+                <span class="param-unit">°C</span>
+              </div>
+              <div class="temp-row">T1: <span id="valT1">36.8</span></div>
+              <div class="temp-row">T2: <span id="valT2">36.9</span></div>
+            </div>
+
+          </div>
+
+        </div>
+
+        <!-- BOTTOM SCREEN STATUS LINE -->
+        <div class="screen-bottom-bar">
+          <span class="status-msg" id="screenMsg">MONITORING ACTIVE — SOURCE: SIMULATOR</span>
+          <span class="freeze-tag" id="freezeTag">FREEZE</span>
+        </div>
+
+      </div>
+
+      <!-- HARDWARE CONTROL DECK BELOW DISPLAY GLASS -->
+      <div class="hardware-deck">
+        
+        <!-- SENSOR CONNECTOR SOCKETS PANEL -->
+        <div class="sensor-ports-panel">
+          <div class="sensor-panel-title">PATIENT SENSORS (CLICK TO TOGGLE CABLE)</div>
+          <div class="sensor-row" id="socketECG">
+            <span class="sensor-label">ECG 5-LEAD</span>
+            <div class="cable-indicator connected" id="cableECG"></div>
+          </div>
+          <div class="sensor-row" id="socketSpO2">
+            <span class="sensor-label">SpO₂ PROBE</span>
+            <div class="cable-indicator connected" id="cableSpO2"></div>
+          </div>
+          <div class="sensor-row" id="socketNIBP">
+            <span class="sensor-label">NIBP CUFF</span>
+            <div class="cable-indicator connected" id="cableNIBP"></div>
+          </div>
+          <div class="sensor-row" id="socketTEMP1">
+            <span class="sensor-label">TEMP T1</span>
+            <div class="cable-indicator connected" id="cableTEMP1"></div>
+          </div>
+          <div class="sensor-row" id="socketTEMP2">
+            <span class="sensor-label">TEMP T2</span>
+            <div class="cable-indicator connected" id="cableTEMP2"></div>
+          </div>
+        </div>
+
+        <!-- CENTER PUSH BUTTONS & SCENARIOS -->
+        <div class="controls-center-group">
+          <!-- MAIN PHYSICAL PUSH BUTTONS -->
+          <div class="push-buttons-row">
+            <button class="push-btn btn-power" id="btnPower">POWER</button>
+            <button class="push-btn btn-freeze" id="btnFreeze">FREEZE</button>
+            <button class="push-btn btn-nibp" id="btnNIBP">NIBP START</button>
+            <button class="push-btn btn-silence" id="btnSilence">SILENCE</button>
+            <button class="push-btn btn-menu" id="btnMenu">MENU</button>
+            <button class="push-btn btn-recorder" id="btnPrint">RECORDER</button>
+          </div>
+
+          <!-- PATIENT SCENARIO BUTTONS ROW -->
+          <div class="scenario-buttons-row">
+            <span class="scenario-row-label">PATIENT SCENARIO:</span>
+            <button class="scen-btn active" id="btnScenNormal">NORMAL</button>
+            <button class="scen-btn" id="btnScenStressed">STRESSED</button>
+            <button class="scen-btn" id="btnScenDeteriorating">DETERIORATING</button>
+            <button class="scen-btn" id="btnScenCritical">CRITICAL</button>
+            <button class="scen-btn btn-emergency" id="btnScenEmergency">EMERGENCY</button>
+          </div>
+        </div>
+
+        <!-- RIGHT KNOB & LEDS & PRINTER -->
+        <div class="controls-right-group">
+          <!-- STATUS LEDS -->
+          <div class="led-indicators">
+            <div class="led-item"><div class="led-dot led-ac active"></div><span>AC</span></div>
+            <div class="led-item"><div class="led-dot led-batt active"></div><span>BATT</span></div>
+            <div class="led-item"><div class="led-dot led-charge active"></div><span>CHARGE</span></div>
+          </div>
+
+          <!-- ROTARY KNOB -->
+          <div class="rotary-knob-wrapper">
+            <div class="rotary-knob" id="rotaryKnob">
+              <div class="knob-line"></div>
+            </div>
+            <span class="knob-label">PUSH / ROTATE</span>
+          </div>
+
+          <!-- THERMAL RECORDER PRINTER SLOT -->
+          <div class="thermal-printer-slot">
+            <div class="printer-grill"></div>
+            <span class="printer-label">THERMAL RECORDER</span>
+            <div class="printed-paper-strip hidden" id="printedPaperStrip">
+              <div class="paper-body" id="paperBody">PRINTING VITAL STRIP...</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- REAR CONNECTIVITY PANEL CHASSIS -->
+    <div class="rear-chassis hidden" id="rearChassis">
+      <div class="chassis-header">
+        <div class="brand-title">
+          <span class="brand-name">CONTEC</span>
+          <span class="model-name">CMS8000</span>
+          <span class="sub-name">REAR CONNECTIVITY PANEL</span>
+        </div>
+        <button class="btn-rotate-back" id="btnRotateBack">➔ FRONT MONITOR VIEW</button>
+      </div>
+
+      <div class="rear-ports-container">
+        <div class="rear-port-box">
+          <div class="port-icon ac-icon">❚❚❚</div>
+          <span class="port-name">AC POWER IN</span>
+          <span class="port-sub">100-240V ~ 50/60Hz</span>
+        </div>
+        <div class="rear-port-box">
+          <div class="port-icon rj45-icon">■</div>
+          <span class="port-name">RJ45 ETHERNET LAN</span>
+          <span class="port-sub">10/100 Mbps (Data Bridge)</span>
+        </div>
+        <div class="rear-port-box">
+          <div class="port-icon usb-icon">▬</div>
+          <span class="port-name">USB DATA INTERFACE</span>
+          <span class="port-sub">Host / Device Port</span>
+        </div>
+        <div class="rear-port-box">
+          <div class="port-icon ground-icon">⤓</div>
+          <span class="port-name">EQUIPOTENTIAL GROUND</span>
+          <span class="port-sub">Safety Ground Post</span>
+        </div>
+      </div>
+
+      <div class="rear-vent-grill"></div>
+
+      <div class="rear-spec-label">
+        CMS8000-INSPIRED VIRTUAL PATIENT MONITOR<br>
+        DEVICE ID: PMS-VIRTUAL-CMS8000-001 | SN: 20260906-8000X<br>
+        MANUFACTURER SIMULATION ENGINE — FOR RESEARCH & DEMO ONLY
+      </div>
+    </div>
+
+    <!-- COLLAPSIBLE DEVELOPER DEBUGGING PANEL -->
+    <div class="dev-panel-container collapsed" id="devPanel">
+      <div class="dev-panel-header" id="devPanelHeader">
+        <span>DEVELOPER DEBUGGING PANEL (WEBSOCKET & DATA ENGINE)</span>
+        <button class="dev-toggle-btn" id="btnToggleDev">SHOW / HIDE</button>
+      </div>
+      <div class="dev-panel-body">
+        <div class="dev-stat-row">
+          <span>WS Connection:</span> <strong id="devWsStatus">DISCONNECTED</strong>
+        </div>
+        <div class="dev-stat-row">
+          <span>Packets Recv:</span> <strong id="devPacketCount">0</strong>
+        </div>
+        <div class="dev-stat-row">
+          <span>Active Session:</span> <strong id="devSessionId">NONE</strong>
+        </div>
+        <div class="dev-stat-row">
+          <span>Source:</span> <strong id="devSource">SIMULATOR</strong>
+        </div>
+        <div class="dev-json-box">
+          <div class="json-title">LAST OUTGOING MESSAGE (CANONICAL JSON CONTRACT)</div>
+          <pre id="devJsonPreview">{}</pre>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- APPLICATION SCRIPT INCLUDES -->
+  <script src="js/audio_synth.js"></script>
+  <script src="js/display.js"></script>
+  <script src="js/controls.js"></script>
+  <script src="js/ports.js"></script>
+  <script src="js/dev_panel.js"></script>
+  <script src="js/monitor_view.js"></script>
+</body>
+</html>
