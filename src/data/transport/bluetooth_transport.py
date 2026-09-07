@@ -20,7 +20,7 @@ class BluetoothTransport(TransportInterface):
     """
     Bluetooth RFCOMM Transport implementation for PMS.
     
-    Transmits newline-delimited JSON payloads over Bluetooth RFCOMM socket.
+    Transmits newline-delimited JSON payloads over physical Bluetooth RFCOMM socket.
     Runs entirely in a background worker thread with a non-blocking message queue,
     ensuring main simulation and UI loops never block or freeze if Bluetooth is disconnected.
     """
@@ -30,17 +30,20 @@ class BluetoothTransport(TransportInterface):
         mode: str = "SERVER",
         target_address: str = "",
         port: int = 1,
-        max_queue_size: int = 500
+        max_queue_size: int = 500,
+        enable_test_fallback: bool = False
     ):
         """
         :param mode: 'SERVER' (listen for receiver) or 'CLIENT' (connect to target MAC)
         :param target_address: MAC address of target device in CLIENT mode (e.g. 'XX:XX:XX:XX:XX:XX')
         :param port: RFCOMM channel/port (default 1)
         :param max_queue_size: Maximum pending payloads buffer
+        :param enable_test_fallback: If False (default), TCP port 8888 fallback is disabled.
         """
         self.mode = mode.upper()
         self.target_address = target_address
         self.port = port
+        self.enable_test_fallback = enable_test_fallback
         self._send_queue: queue.Queue = queue.Queue(maxsize=max_queue_size)
         
         self._connected = False
@@ -60,7 +63,7 @@ class BluetoothTransport(TransportInterface):
             daemon=True
         )
         self._worker_thread.start()
-        logger.info(f"BluetoothTransport started in {self.mode} mode on RFCOMM channel {self.port}.")
+        logger.info(f"BluetoothTransport worker thread started (Mode: {self.mode}, Configured Port: {self.port}, Test Fallback: {self.enable_test_fallback}).")
 
     def stop(self) -> None:
         """Stop background worker and close sockets."""
@@ -120,51 +123,67 @@ class BluetoothTransport(TransportInterface):
             self._run_client_connect()
 
     def _run_server_accept(self) -> None:
-        """Sets up server socket and blocks until a receiver client connects."""
+        """Sets up physical Bluetooth RFCOMM server socket and accepts incoming connections."""
         try:
             if self._server_socket is None:
-                # 1. Try native Bluetooth RFCOMM socket first
+                # 1. Physical Bluetooth RFCOMM Channel Allocation
                 if hasattr(socket, "AF_BLUETOOTH"):
-                    try:
-                        bt_sock = socket.socket(
-                            socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM
-                        )
-                        # On Windows AF_BLUETOOTH, bind address must be MAC '00:00:00:00:00:00' or BDADDR_ANY
-                        bt_sock.bind(("00:00:00:00:00:00", self.port))
-                        bt_sock.listen(1)
-                        bt_sock.settimeout(2.0)
-                        self._server_socket = bt_sock
-                        logger.info(f"Bluetooth RFCOMM Server listening on channel {self.port}...")
-                    except Exception as bt_err:
-                        logger.info(f"Physical Bluetooth RFCOMM unavailable ({bt_err}). Falling back to local test socket (port 8888)...")
-                        self._server_socket = None
+                    # On Windows, try configured port first, then scan channels 1..30 for an available RFCOMM channel
+                    channels_to_try = [self.port] + [c for c in range(1, 31) if c != self.port]
+                    for ch in channels_to_try:
+                        try:
+                            bt_sock = socket.socket(
+                                socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM
+                            )
+                            # Bind on BDADDR_ANY ('00:00:00:00:00:00')
+                            bt_sock.bind(("00:00:00:00:00:00", ch))
+                            bt_sock.listen(1)
+                            bt_sock.settimeout(2.0)
+                            self._server_socket = bt_sock
 
-                # 2. Fallback to TCP socket server for test harness / environment without active BT hardware
-                if self._server_socket is None:
+                            mac_addr, bound_ch = bt_sock.getsockname()
+                            self.port = bound_ch
+                            logger.info(f"[PHYSICAL BLUETOOTH RFCOMM] Server listening on MAC={mac_addr} CHANNEL={bound_ch}")
+                            break
+                        except Exception as err:
+                            logger.debug(f"RFCOMM Channel {ch} bind attempt failed: {err}")
+                            self._server_socket = None
+
+                # If physical Bluetooth bind failed and test fallback is disabled (default in production)
+                if self._server_socket is None and not self.enable_test_fallback:
+                    logger.error("[PHYSICAL BLUETOOTH RFCOMM] Could not bind an open Bluetooth RFCOMM channel on Windows. Test fallback is disabled.")
+                    time.sleep(5.0)
+                    return
+
+                # 2. Optional TCP socket fallback ONLY if explicitly enabled
+                if self._server_socket is None and self.enable_test_fallback:
                     tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                     tcp_sock.bind(("0.0.0.0", 8888))
                     tcp_sock.listen(1)
                     tcp_sock.settimeout(2.0)
                     self._server_socket = tcp_sock
-                    logger.info("Local test socket server listening on port 8888...")
+                    logger.info("[TCP TEST FALLBACK] Local test socket server listening on port 8888...")
 
             while self._running and not self._connected:
                 try:
                     client_sock, client_info = self._server_socket.accept()
+                    # CRITICAL FIX: Accepted client socket inherits server timeout (2.0s).
+                    # Set client socket timeout to None (blocking socket for worker thread) so sendall does not time out!
+                    client_sock.settimeout(None)
                     self._active_socket = client_sock
                     self._connected = True
-                    logger.info(f"Bluetooth/Test client connected from: {client_info}")
+                    logger.info(f"[PHYSICAL BLUETOOTH] Client connected from: {client_info}")
                     break
                 except socket.timeout:
                     continue
                 except Exception as e:
-                    logger.warning(f"Transport accept error: {e}")
+                    logger.warning(f"[PHYSICAL BLUETOOTH] Transport accept error: {e}")
                     self._close_server_socket()
                     time.sleep(2.0)
                     break
         except Exception as e:
-            logger.error(f"Failed to create transport server socket: {e}")
+            logger.error(f"[PHYSICAL BLUETOOTH] Failed to create transport server socket: {e}")
             self._close_server_socket()
             time.sleep(3.0)
 
@@ -178,50 +197,67 @@ class BluetoothTransport(TransportInterface):
         # 1. Try Bluetooth RFCOMM
         if hasattr(socket, "AF_BLUETOOTH"):
             try:
-                logger.info(f"Connecting to Bluetooth device {self.target_address} on channel {self.port}...")
+                logger.info(f"[PHYSICAL BLUETOOTH] Connecting to device {self.target_address} on channel {self.port}...")
                 client_sock = socket.socket(
                     socket.AF_BLUETOOTH, socket.SOCK_STREAM, socket.BTPROTO_RFCOMM
                 )
                 client_sock.settimeout(5.0)
                 client_sock.connect((self.target_address, self.port))
+                client_sock.settimeout(None)
                 self._active_socket = client_sock
                 self._connected = True
-                logger.info(f"Connected to Bluetooth device {self.target_address}")
+                logger.info(f"[PHYSICAL BLUETOOTH] Connected to Bluetooth device {self.target_address}")
                 return
             except Exception as e:
-                logger.info(f"Bluetooth connection failed: {e}. Trying test socket fallback...")
+                logger.info(f"[PHYSICAL BLUETOOTH] Connection failed: {e}.")
+                if not self.enable_test_fallback:
+                    time.sleep(3.0)
+                    return
 
-        # 2. Fallback to TCP socket
-        try:
-            client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            client_sock.settimeout(5.0)
-            target_ip = "127.0.0.1" if self.target_address == "00:00:00:00:00:00" else self.target_address
-            client_sock.connect((target_ip, 8888))
-            self._active_socket = client_sock
-            self._connected = True
-            logger.info(f"Connected to test socket receiver at {target_ip}:8888")
-        except Exception as e:
-            logger.warning(f"Transport client connection failed: {e}. Retrying in 3s...")
-            self._close_active_socket()
-            time.sleep(3.0)
+        # 2. Fallback to TCP socket if enabled
+        if self.enable_test_fallback:
+            try:
+                client_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                client_sock.settimeout(5.0)
+                target_ip = "127.0.0.1" if self.target_address == "00:00:00:00:00:00" else self.target_address
+                client_sock.connect((target_ip, 8888))
+                client_sock.settimeout(None)
+                self._active_socket = client_sock
+                self._connected = True
+                logger.info(f"[TCP TEST FALLBACK] Connected to test socket receiver at {target_ip}:8888")
+            except Exception as e:
+                logger.warning(f"[TCP TEST FALLBACK] Connection failed: {e}. Retrying in 3s...")
+                self._close_active_socket()
+                time.sleep(3.0)
 
     def _drain_queue(self) -> None:
         """Drains pending JSON payloads from queue and sends over active socket."""
+        sent_count = 0
         while self._running and self._connected and self._active_socket:
             try:
                 payload = self._send_queue.get(timeout=0.5)
                 data_bytes = payload.encode("utf-8")
                 self._active_socket.sendall(data_bytes)
                 self._send_queue.task_done()
+                sent_count += 1
+
+                # Diagnostic logging
+                if "VITAL_UPDATE" in payload:
+                    logger.info(f"[PHYSICAL BLUETOOTH] VITAL_UPDATE sent ({len(data_bytes)} bytes)")
+                elif "DEVICE_STATUS" in payload:
+                    logger.info(f"[PHYSICAL BLUETOOTH] DEVICE_STATUS sent ({len(data_bytes)} bytes)")
+                elif sent_count % 50 == 0:  # Rate-limited logging for high frequency streams
+                    logger.info(f"[PHYSICAL BLUETOOTH] Transmitted {sent_count} packets ({len(data_bytes)} bytes)")
+
             except queue.Empty:
                 continue
             except (socket.error, OSError) as e:
-                logger.warning(f"Bluetooth socket send error: {e}. Disconnecting...")
+                logger.warning(f"[PHYSICAL BLUETOOTH] Client disconnected: {e}")
                 self._connected = False
                 self._close_active_socket()
                 break
             except Exception as e:
-                logger.error(f"Unexpected error sending Bluetooth payload: {e}")
+                logger.error(f"[PHYSICAL BLUETOOTH] Send error: {e}")
                 self._connected = False
                 self._close_active_socket()
                 break

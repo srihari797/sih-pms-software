@@ -13,8 +13,8 @@ from src.data.data_serializer import DataSerializer, DataValidator
 from src.data.transport.bluetooth_transport import BluetoothTransport
 from src.data.transport.transport_manager import transport_manager
 
-# Initialize Bluetooth transport (Server mode listening on RFCOMM channel 1)
-bt_transport = BluetoothTransport(mode="SERVER", port=1)
+# Initialize Bluetooth transport (Server mode, physical Bluetooth RFCOMM, test fallback disabled)
+bt_transport = BluetoothTransport(mode="SERVER", port=1, enable_test_fallback=False)
 transport_manager.register_transport(bt_transport)
 
 app = FastAPI(title="Contec CMS8000 Virtual Patient Monitor", version="1.0.0")
